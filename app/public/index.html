@@ -1,0 +1,1305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Chat App</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        video {
+            background-color: #000;
+        }
+        .animate-hover-scale {
+            transition: transform 0.2s ease-in-out;
+        }
+        .animate-hover-scale:hover {
+            transform: scale(1.05);
+        }
+        .animate-slide-in {
+            animation: slideIn 0.3s ease-out;
+        }
+        @keyframes slideIn {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        .animate-pulse {
+            animation: pulse 0.3s ease-in-out;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+        .server-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .server-item.selected {
+            background-color: #d1e7dd;
+        }
+        .sound-meter-container {
+            position: relative;
+            width: 100%;
+            height: 24px;
+            background: #e5e7eb;
+            border-radius: 6px;
+            overflow: hidden;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        .sound-meter {
+            height: 100%;
+            background: #22c55e;
+            transition: width 0.1s ease, transform 0.2s ease;
+        }
+        .sound-meter-label {
+            position: absolute;
+            top: 50%;
+            right: 8px;
+            transform: translateY(-50%);
+            font-size: 12px;
+            color: #374151;
+            font-weight: 500;
+        }
+        .icon-button {
+            position: relative;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+            transition: background-color 0.2s ease;
+            cursor: pointer;
+            z-index: 20;
+            pointer-events: auto;
+        }
+        .icon-button:hover {
+            background-color: #e5e7eb;
+        }
+        .icon-button.disabled {
+            background-color: #d1d5db;
+        }
+        .diagonal-line {
+            position: absolute;
+            width: 2px;
+            height: 24px;
+            background-color: #ef4444;
+            transform: rotate(45deg);
+            pointer-events: none;
+            z-index: 5;
+        }
+        .remote-videos-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 16px;
+        }
+        .remote-video-container {
+            position: relative;
+        }
+        .video-container {
+            position: relative;
+            width: 100%;
+        }
+        .video-placeholder {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-size: 120px;
+            font-weight: bold;
+            border-radius: 8px;
+        }
+        .participant-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 4px;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen font-sans">
+    <div id="authContainer" class="container mx-auto p-4">
+        <h1 class="text-3xl font-bold text-gray-800 mb-6">Voice Chat App</h1>
+        <div class="bg-white rounded-lg shadow-md p-4 max-w-md mx-auto">
+            <h2 id="authTitle" class="text-xl font-semibold text-gray-700 mb-4">Login</h2>
+            <div class="space-y-4">
+                <input id="username" type="text" placeholder="Username" class="w-full p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <input id="password" type="password" placeholder="Password" class="w-full p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <div class="flex gap-2">
+                    <button id="authButton" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 animate-hover-scale">Login</button>
+                    <button id="toggleAuthButton" class="bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600 animate-hover-scale">Register</button>
+                </div>
+                <p id="authError" class="text-red-500 hidden"></p>
+            </div>
+        </div>
+    </div>
+    <div id="appContainer" class="container mx-auto p-4 hidden">
+        <div class="flex justify-between items-center mb-6">
+            <h1 class="text-3xl font-bold text-gray-800">Voice Chat App</h1>
+            <button id="logoutButton" class="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 animate-hover-scale">Logout</button>
+        </div>
+        <div class="flex flex-col md:flex-row gap-6">
+            <div class="w-full md:w-1/3 bg-white rounded-lg shadow-md p-4 animate-slide-in">
+                <h2 class="text-xl font-semibold text-gray-700 mb-4">Servers</h2>
+                <div class="space-y-4 mb-4">
+                    <input id="serverNameInput" type="text" placeholder="New server name" class="w-full p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <div class="flex items-center gap-2">
+                        <label for="maxUsersSlider" class="text-gray-700">Max Participants (1-4):</label>
+                        <input id="maxUsersSlider" type="range" min="1" max="4" value="1" class="w-full">
+                        <span id="maxUsersValue" class="text-gray-700">1</span>
+                    </div>
+                    <button id="createServerButton" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 animate-hover-scale w-full">Create</button>
+                </div>
+                <div id="servers" class="space-y-2"></div>
+                <button id="leaveRoomButton" class="mt-4 bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600 animate-hover-scale hidden">Leave Room</button>
+                <div class="mt-4">
+                    <h3 class="text-lg font-semibold text-gray-700 mb-2">Participants</h3>
+                    <div id="participantsList" class="space-y-2"></div>
+                </div>
+            </div>
+            <div class="w-full md:w-2/3 flex flex-col gap-4">
+                <div class="bg-white rounded-lg shadow-md p-4 animate-slide-in">
+                    <div class="flex flex-col sm:flex-row gap-4 mb-4">
+                        <div class="flex-1">
+                            <h3 id="localVideoLabel" class="text-lg font-semibold text-gray-700 mb-2"></h3>
+                            <div class="video-container">
+                                <video id="localVideo" autoplay muted class="w-full rounded-lg"></video>
+                                <div id="localVideoPlaceholder" class="video-placeholder hidden"></div>
+                            </div>
+                            <div id="soundMeterContainer" class="sound-meter-container mt-2">
+                                <div id="soundMeter" class="sound-meter" style="width: 0%"></div>
+                                <span id="soundMeterLabel" class="sound-meter-label">0 dB</span>
+                            </div>
+                        </div>
+                        <div class="flex-1">
+                            <h3 class="text-lg font-semibold text-gray-700 mb-2">Participants</h3>
+                            <div id="remoteVideos" class="remote-videos-grid"></div>
+                        </div>
+                    </div>
+                    <div class="mb-4">
+                        <h3 class="text-lg font-semibold text-gray-700 mb-2">Your Screen Share</h3>
+                        <video id="localScreenShareVideo" autoplay muted class="w-full rounded-lg hidden"></video>
+                    </div>
+                    <div id="buttonContainer" class="flex flex-wrap gap-4">
+                        <button id="startButton" disabled class="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 disabled:bg-gray-400 animate-hover-scale">Join Channel</button>
+                        <button id="hangupButton" disabled class="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 disabled:bg-gray-400 animate-hover-scale">Leave Channel</button>
+                        <button id="muteButton" class="icon-button">
+                            <svg class="w-6 h-6 text-gray-800" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path>
+                            </svg>
+                            <div id="muteLine" class="diagonal-line hidden"></div>
+                        </button>
+                        <button id="videoButton" class="icon-button">
+                            <svg class="w-6 h-6 text-gray-800" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                            </svg>
+                            <div id="videoLine" class="diagonal-line hidden"></div>
+                        </button>
+                        <button id="screenShareButton" class="bg-teal-500 text-white px-4 py-2 rounded-lg hover:bg-teal-600 disabled:bg-gray-400 animate-hover-scale">Share Screen</button>
+                    </div>
+                </div>
+                <div class="bg-white rounded-lg shadow-md p-4 animate-slide-in">
+                    <h3 class="text-lg font-semibold text-gray-700 mb-2">Chat</h3>
+                    <div id="chatMessages" class="h-40 overflow-y-auto border rounded-lg p-2 mb-2"></div>
+                    <div class="flex gap-2">
+                        <input id="chatInput" type="text" placeholder="Type a message..." class="flex-grow p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <button id="sendChatButton" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 animate-hover-scale">Send</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="container mx-auto p-4 mt-4">
+            <div class="bg-white rounded-lg shadow-md p-4">
+                <h3 class="text-lg font-semibold text-gray-700 mb-2">Admin Access</h3>
+                <div class="flex gap-2">
+                    <input id="adminKeyInput" type="password" placeholder="Enter admin key" class="w-full p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <button id="adminAuthButton" class="bg-purple-500 text-white px-4 py-2 rounded-lg hover:bg-purple-600 animate-hover-scale">Authenticate</button>
+                </div>
+                <p id="adminAuthError" class="text-red-500 mt-2 hidden"></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const configuration = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' }
+            ]
+        };
+
+        const localVideo = document.getElementById('localVideo');
+        const localVideoLabel = document.getElementById('localVideoLabel');
+        const localVideoPlaceholder = document.getElementById('localVideoPlaceholder');
+        const remoteVideos = document.getElementById('remoteVideos');
+        const localScreenShareVideo = document.getElementById('localScreenShareVideo');
+        const screenShareVideo = document.getElementById('screenShareVideo');
+        const startButton = document.getElementById('startButton');
+        const hangupButton = document.getElementById('hangupButton');
+        const muteButton = document.getElementById('muteButton');
+        const videoButton = document.getElementById('videoButton');
+        const muteLine = document.getElementById('muteLine');
+        const videoLine = document.getElementById('videoLine');
+        const screenShareButton = document.getElementById('screenShareButton');
+        const serverNameInput = document.getElementById('serverNameInput');
+        const maxUsersSlider = document.getElementById('maxUsersSlider');
+        const maxUsersValue = document.getElementById('maxUsersValue');
+        const createServerButton = document.getElementById('createServerButton');
+        const serversDiv = document.getElementById('servers');
+        const leaveRoomButton = document.getElementById('leaveRoomButton');
+        const chatInput = document.getElementById('chatInput');
+        const sendChatButton = document.getElementById('sendChatButton');
+        const chatMessages = document.getElementById('chatMessages');
+        const authContainer = document.getElementById('authContainer');
+        const appContainer = document.getElementById('appContainer');
+        const usernameInput = document.getElementById('username');
+        const passwordInput = document.getElementById('password');
+        const authButton = document.getElementById('authButton');
+        const toggleAuthButton = document.getElementById('toggleAuthButton');
+        const authTitle = document.getElementById('authTitle');
+        const authError = document.getElementById('authError');
+        const logoutButton = document.getElementById('logoutButton');
+        const soundMeter = document.getElementById('soundMeter');
+        const soundMeterLabel = document.getElementById('soundMeterLabel');
+        const adminKeyInput = document.getElementById('adminKeyInput');
+        const adminAuthButton = document.getElementById('adminAuthButton');
+        const adminAuthError = document.getElementById('adminAuthError');
+        const participantsList = document.getElementById('participantsList');
+        const buttonContainer = document.getElementById('buttonContainer');
+
+        let localStream;
+        let screenStream;
+        let peerConnections = new Map();
+        let signalingServer;
+        let currentServerId = null;
+        let servers = [];
+        let userId = null;
+        let token = null;
+        let isMuted = false;
+        let isVideoOn = true;
+        let isScreenSharing = false;
+        let audioContext;
+        let analyser;
+        let microphone;
+        let selectedServerElement = null;
+        let remoteUsers = new Map();
+        let isAdmin = false;
+        let participants = [];
+        let host = null;
+        let pingInterval;
+        let reconnectAttempts = 0;
+        let reconnectDelay = 3000;
+
+        maxUsersSlider.oninput = () => {
+            maxUsersValue.textContent = maxUsersSlider.value;
+        };
+
+        adminKeyInput.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                adminAuthButton.click();
+            }
+        });
+
+        chatInput.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                sendChatButton.click();
+            }
+        });
+
+        async function setupSoundMeter() {
+            if (localStream && !isMuted) {
+                audioContext = new AudioContext();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+                microphone = audioContext.createMediaStreamSource(localStream);
+                microphone.connect(analyser);
+                updateSoundMeter();
+            }
+        }
+
+        function updateSoundMeter() {
+            if (!analyser || isMuted) {
+                soundMeter.style.width = '0%';
+                soundMeterLabel.textContent = '0 dB';
+                return;
+            }
+            const data = new Uint8Array(analyser.fftSize);
+            analyser.getByteTimeDomainData(data);
+            let sum = 0;
+            for (let i = 0; i < data.length; i++) {
+                const a = data[i] - 128;
+                sum += a * a;
+            }
+            const rms = Math.sqrt(sum / data.length) / 128;
+            const volumePercentage = rms * 100;
+            const db = 20 * Math.log10(rms + 0.00001);
+            soundMeter.style.width = `${volumePercentage}%`;
+            soundMeterLabel.textContent = `${Math.round(db)} dB`;
+
+            if (signalingServer && signalingServer.readyState === WebSocket.OPEN && currentServerId) {
+                signalingServer.send(JSON.stringify({
+                    type: 'volume',
+                    volume: volumePercentage,
+                    serverId: currentServerId,
+                    userId,
+                    token
+                }));
+            }
+
+            if (analyser) requestAnimationFrame(updateSoundMeter);
+        }
+
+        function stopSoundMeter() {
+            if (audioContext) {
+                audioContext.close();
+                audioContext = null;
+                analyser = null;
+                microphone = null;
+            }
+            soundMeter.style.width = '0%';
+            soundMeterLabel.textContent = '0 dB';
+        }
+
+        function connectSignalingServer() {
+            if (!userId || !token) {
+                console.error('Cannot connect to WebSocket: userId or token is missing');
+                authError.textContent = 'Please authenticate before connecting.';
+                authError.classList.remove('hidden');
+                return;
+            }
+            signalingServer = new WebSocket('wss://brick-occipital-onion.glitch.me');
+            signalingServer.onmessage = handleSignalingMessage;
+            signalingServer.onopen = () => {
+                console.log('WebSocket connected');
+                reconnectAttempts = 0;
+                reconnectDelay = 3000;
+                signalingServer.send(JSON.stringify({ type: 'getServers', userId, token }));
+                pingInterval = setInterval(() => {
+                    if (signalingServer.readyState === WebSocket.OPEN) {
+                        signalingServer.send(JSON.stringify({ type: 'ping' }));
+                        console.log('Sent ping to server');
+                    }
+                }, 20000);
+            };
+            signalingServer.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                authError.textContent = 'Failed to connect to server. Please try again.';
+                authError.classList.remove('hidden');
+            };
+            signalingServer.onclose = (event) => {
+                console.log('WebSocket closed:', event.code, event.reason);
+                clearInterval(pingInterval);
+                authError.textContent = 'Disconnected from server. Reconnecting...';
+                authError.classList.remove('hidden');
+                reconnectAttempts++;
+                const delay = Math.min(reconnectDelay * Math.pow(2, reconnectAttempts), 30000);
+                setTimeout(() => connectSignalingServer(), delay);
+                console.log(`Reconnecting in ${delay/1000} seconds (attempt ${reconnectAttempts})`);
+            };
+        }
+
+        async function handleSignalingMessage(event) {
+            try {
+                const message = JSON.parse(event.data);
+                console.log('Received WebSocket message:', message);
+                switch (message.type) {
+                    case 'servers':
+                        servers = message.servers;
+                        updateServerList();
+                        break;
+                    case 'join':
+                        if (message.serverId === currentServerId && message.userId !== userId) {
+                            remoteUsers.set(message.userId, { video: null, audio: null, screenShare: null, soundMeter: 0, isVideoOn: true });
+                            updateRemoteVideos();
+                            createPeerConnection(message.userId);
+                        }
+                        break;
+                    case 'leave':
+                        if (message.serverId === currentServerId && message.userId !== userId) {
+                            const pc = peerConnections.get(message.userId);
+                            if (pc) {
+                                pc.close();
+                                peerConnections.delete(message.userId);
+                            }
+                            remoteUsers.delete(message.userId);
+                            updateRemoteVideos();
+                        }
+                        break;
+                    case 'forceLeave':
+                        if (message.serverId === currentServerId) {
+                            leaveRoom();
+                            alert('You have been kicked from the server or the server was deleted.');
+                        }
+                        break;
+                    case 'forceMute':
+                        if (message.serverId === currentServerId && message.userId === userId) {
+                            isMuted = message.isMuted;
+                            if (localStream) {
+                                const audioTracks = localStream.getAudioTracks();
+                                audioTracks.forEach(track => {
+                                    track.enabled = !isMuted;
+                                });
+                            }
+                            if (isMuted) {
+                                stopSoundMeter();
+                                muteLine.classList.remove('hidden');
+                            } else {
+                                setupSoundMeter();
+                                muteLine.classList.add('hidden');
+                            }
+                            alert(`An admin has ${isMuted ? 'muted' : 'unmuted'} you.`);
+                        }
+                        break;
+                    case 'offer':
+                        if (message.serverId === currentServerId && message.target === userId) {
+                            const pc = peerConnections.get(message.userId);
+                            if (pc) {
+                                await pc.setRemoteDescription(new RTCSessionDescription(message.offer));
+                                const answer = await pc.createAnswer();
+                                await pc.setLocalDescription(answer);
+                                signalingServer.send(JSON.stringify({
+                                    type: 'answer',
+                                    answer,
+                                    serverId: currentServerId,
+                                    userId,
+                                    target: message.userId,
+                                    token
+                                }));
+                            }
+                        }
+                        break;
+                    case 'answer':
+                        if (message.serverId === currentServerId && message.target === userId) {
+                            const pc = peerConnections.get(message.userId);
+                            if (pc) {
+                                await pc.setRemoteDescription(new RTCSessionDescription(message.answer));
+                            }
+                        }
+                        break;
+                    case 'candidate':
+                        if (message.serverId === currentServerId && message.target === userId) {
+                            const pc = peerConnections.get(message.userId);
+                            if (pc) {
+                                await pc.addIceCandidate(new RTCIceCandidate(message.candidate));
+                            }
+                        }
+                        break;
+                    case 'mute':
+                        if (message.serverId === currentServerId && message.userId !== userId) {
+                            const user = remoteUsers.get(message.userId);
+                            if (user) {
+                                user.isMuted = message.isMuted;
+                            }
+                        }
+                        break;
+                    case 'video':
+                        if (message.serverId === currentServerId && message.userId !== userId) {
+                            const user = remoteUsers.get(message.userId);
+                            if (user) {
+                                user.isVideoOn = message.isVideoOn;
+                                const placeholder = document.getElementById(`video-placeholder-${message.userId}`);
+                                if (placeholder) {
+                                    placeholder.classList.toggle('hidden', message.isVideoOn && user.video);
+                                }
+                            }
+                        }
+                        break;
+                    case 'volume':
+                        if (message.serverId === currentServerId && message.userId !== userId) {
+                            const user = remoteUsers.get(message.userId);
+                            if (user) {
+                                user.soundMeter = message.volume;
+                                const soundMeter = document.getElementById(`soundMeter-${message.userId}`);
+                                const soundMeterLabel = document.getElementById(`soundMeterLabel-${message.userId}`);
+                                if (soundMeter && soundMeterLabel) {
+                                    soundMeter.style.width = `${message.volume}%`;
+                                    const db = 20 * Math.log10((message.volume / 100) + 0.00001);
+                                    soundMeterLabel.textContent = `${Math.round(db)} dB`;
+                                }
+                            }
+                        }
+                        break;
+                    case 'chat':
+                        appendChatMessage(message.userId, message.text);
+                        break;
+                    case 'adminAuth':
+                        if (message.success) {
+                            isAdmin = true;
+                            adminAuthButton.classList.add('hidden');
+                            adminKeyInput.classList.add('hidden');
+                            adminAuthError.classList.add('hidden');
+                            updateServerList();
+                            if (currentServerId) {
+                                updateParticipantList(participants, host);
+                            }
+                        } else {
+                            adminAuthError.textContent = message.message;
+                            adminAuthError.classList.remove('hidden');
+                        }
+                        break;
+                    case 'participantList':
+                        if (message.serverId === currentServerId) {
+                            participants = message.participants;
+                            host = message.host;
+                            participants.forEach(participant => {
+                                if (!remoteUsers.has(participant) && participant !== userId) {
+                                    remoteUsers.set(participant, { video: null, audio: null, screenShare: null, soundMeter: 0, isVideoOn: true });
+                                    createPeerConnection(participant);
+                                }
+                            });
+                            updateParticipantList(participants, host);
+                        }
+                        break;
+                    case 'error':
+                        authError.textContent = `WebSocket Error: ${message.message}`;
+                        authError.classList.remove('hidden');
+                        break;
+                }
+            } catch (error) {
+                console.error('Error handling message:', error);
+            }
+        }
+
+        function updateServerList() {
+            serversDiv.innerHTML = '';
+            servers.forEach(server => {
+                const serverItem = document.createElement('div');
+                serverItem.className = 'server-item p-2 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-200 animate-hover-scale';
+                if (server.id === currentServerId) {
+                    serverItem.classList.add('selected');
+                    selectedServerElement = serverItem;
+                }
+                
+                const serverName = document.createElement('span');
+                serverName.textContent = `${server.name} (${server.users.length}/${server.maxUsers})`;
+                serverName.onclick = () => joinServer(server.id, serverItem, server.maxUsers);
+                serverItem.appendChild(serverName);
+
+                const buttonContainer = document.createElement('div');
+                if (server.creator === userId || isAdmin) {
+                    const deleteButton = document.createElement('button');
+                    deleteButton.textContent = 'Delete';
+                    deleteButton.className = 'bg-red-500 text-white px-2 py-1 rounded-lg hover:bg-red-600 animate-hover-scale';
+                    deleteButton.onclick = () => deleteServer(server.id);
+                    buttonContainer.appendChild(deleteButton);
+                }
+                serverItem.appendChild(buttonContainer);
+
+                serversDiv.appendChild(serverItem);
+            });
+        }
+
+        function updateRemoteVideos() {
+            remoteVideos.innerHTML = '';
+            remoteUsers.forEach((user, userId) => {
+                const container = document.createElement('div');
+                container.className = 'remote-video-container';
+                
+                const label = document.createElement('h3');
+                label.className = 'text-lg font-semibold text-gray-700 mb-2';
+                label.textContent = userId === host ? `${userId} (Host)` : userId;
+                container.appendChild(label);
+
+                const videoContainer = document.createElement('div');
+                videoContainer.className = 'video-container';
+
+                const video = document.createElement('video');
+                video.id = `video-${userId}`;
+                video.autoplay = true;
+                video.className = 'w-full rounded-lg';
+                video.srcObject = user.video;
+                videoContainer.appendChild(video);
+
+                const placeholder = document.createElement('div');
+                placeholder.id = `video-placeholder-${userId}`;
+                placeholder.className = 'video-placeholder';
+                placeholder.textContent = userId.charAt(0).toUpperCase();
+                placeholder.classList.toggle('hidden', user.isVideoOn && user.video);
+                videoContainer.appendChild(placeholder);
+
+                container.appendChild(videoContainer);
+
+                const screenShareContainer = document.createElement('div');
+                screenShareContainer.className = 'mt-2';
+                const screenShareVideo = document.createElement('video');
+                screenShareVideo.id = `screenShare-${userId}`;
+                screenShareVideo.autoplay = true;
+                screenShareVideo.className = 'w-full rounded-lg';
+                screenShareVideo.srcObject = user.screenShare;
+                screenShareContainer.appendChild(screenShareVideo);
+                screenShareContainer.classList.toggle('hidden', !user.screenShare);
+                container.appendChild(screenShareContainer);
+
+                const soundMeterContainer = document.createElement('div');
+                soundMeterContainer.className = 'sound-meter-container mt-2';
+                const soundMeter = document.createElement('div');
+                soundMeter.id = `soundMeter-${userId}`;
+                soundMeter.className = 'sound-meter';
+                soundMeter.style.width = `${user.soundMeter}%`;
+                soundMeterContainer.appendChild(soundMeter);
+                const soundMeterLabel = document.createElement('span');
+                soundMeterLabel.id = `soundMeterLabel-${userId}`;
+                soundMeterLabel.className = 'sound-meter-label';
+                soundMeterLabel.textContent = '0 dB';
+                soundMeterContainer.appendChild(soundMeterLabel);
+                container.appendChild(soundMeterContainer);
+
+                remoteVideos.appendChild(container);
+            });
+        }
+
+        function updateParticipantList(participants, host) {
+            participantsList.innerHTML = '';
+            participants.forEach(participant => {
+                const participantItem = document.createElement('div');
+                participantItem.className = 'participant-item bg-gray-50 rounded-lg';
+                
+                const participantName = document.createElement('span');
+                participantName.textContent = participant === host ? `${participant} (Host)` : participant;
+                participantItem.appendChild(participantName);
+
+                if (isAdmin && participant !== userId) {
+                    const buttonContainer = document.createElement('div');
+                    const kickButton = document.createElement('button');
+                    kickButton.textContent = 'Kick';
+                    kickButton.className = 'bg-red-500 text-white px-2 py-1 rounded-lg hover:bg-red-600 animate-hover-scale mr-2';
+                    kickButton.onclick = () => kickParticipant(participant);
+                    buttonContainer.appendChild(kickButton);
+
+                    const forceMuteButton = document.createElement('button');
+                    forceMuteButton.textContent = remoteUsers.get(participant)?.isMuted ? 'Unmute' : 'Mute';
+                    forceMuteButton.className = 'bg-yellow-500 text-white px-2 py-1 rounded-lg hover:bg-yellow-600 animate-hover-scale';
+                    forceMuteButton.onclick = () => forceMuteParticipant(participant, !remoteUsers.get(participant)?.isMuted);
+                    buttonContainer.appendChild(forceMuteButton);
+
+                    participantItem.appendChild(buttonContainer);
+                }
+
+                participantsList.appendChild(participantItem);
+            });
+        }
+
+        async function deleteServer(serverId) {
+            if (signalingServer.readyState === WebSocket.OPEN) {
+                signalingServer.send(JSON.stringify({
+                    type: 'deleteServer',
+                    id: serverId,
+                    userId,
+                    token
+                }));
+                if (serverId === currentServerId) {
+                    leaveRoom();
+                }
+            } else {
+                alert('Server not connected. Please wait and try again.');
+            }
+        }
+
+        function kickParticipant(targetUserId) {
+            if (signalingServer.readyState === WebSocket.OPEN && currentServerId) {
+                signalingServer.send(JSON.stringify({
+                    type: 'kick',
+                    serverId: currentServerId,
+                    userId,
+                    targetUserId,
+                    token
+                }));
+            }
+        }
+
+        function forceMuteParticipant(targetUserId, isMuted) {
+            if (signalingServer.readyState === WebSocket.OPEN && currentServerId) {
+                signalingServer.send(JSON.stringify({
+                    type: 'forceMute',
+                    serverId: currentServerId,
+                    userId,
+                    targetUserId,
+                    isMuted,
+                    token
+                }));
+            }
+        }
+
+        let isLogin = true;
+        authButton.addEventListener('click', async () => {
+            const username = usernameInput.value.trim();
+            const password = passwordInput.value.trim();
+            if (!username || !password) {
+                authError.textContent = 'Please enter username and password.';
+                authError.classList.remove('hidden');
+                return;
+            }
+            try {
+                const response = await fetch(isLogin ? '/login' : '/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await response.json();
+                console.log('Authentication response:', response.status, data);
+                if (data.error) {
+                    authError.textContent = data.error;
+                    authError.classList.remove('hidden');
+                    return; // Stop here if authentication fails
+                }
+                userId = username;
+                token = data.token;
+                localVideoLabel.textContent = `${userId} (You)`;
+                localVideoPlaceholder.textContent = userId.charAt(0).toUpperCase();
+                authContainer.classList.add('hidden');
+                appContainer.classList.remove('hidden');
+                connectSignalingServer();
+            } catch (error) {
+                console.error('Fetch error:', error);
+                authError.textContent = 'Server error. Please try again.';
+                authError.classList.remove('hidden');
+            }
+        });
+
+        toggleAuthButton.addEventListener('click', () => {
+            isLogin = !isLogin;
+            authTitle.textContent = isLogin ? 'Login' : 'Register';
+            authButton.textContent = isLogin ? 'Login' : 'Register';
+            toggleAuthButton.textContent = isLogin ? 'Register' : 'Login';
+            authError.classList.add('hidden');
+        });
+
+        adminAuthButton.addEventListener('click', () => {
+            const key = adminKeyInput.value.trim();
+            if (!key) {
+                adminAuthError.textContent = 'Please enter an admin key.';
+                adminAuthError.classList.remove('hidden');
+                return;
+            }
+            if (signalingServer.readyState === WebSocket.OPEN) {
+                signalingServer.send(JSON.stringify({
+                    type: 'adminAuth',
+                    key,
+                    userId,
+                    token
+                }));
+            } else {
+                alert('Server not connected. Please wait and try again.');
+            }
+        });
+
+        function resetVideoElements() {
+            if (localVideo) localVideo.srcObject = null;
+            if (localVideoPlaceholder) localVideoPlaceholder.classList.add('hidden');
+            if (localScreenShareVideo) {
+                localScreenShareVideo.srcObject = null;
+                localScreenShareVideo.classList.add('hidden');
+            }
+            if (remoteVideos) remoteVideos.innerHTML = '';
+            if (screenShareVideo) screenShareVideo.srcObject = null;
+            if (screenShareVideo) screenShareVideo.classList.add('hidden');
+        }
+
+        logoutButton.addEventListener('click', () => {
+            if (currentServerId) {
+                leaveRoom();
+            }
+            if (peerConnections.size > 0) {
+                peerConnections.forEach(pc => pc.close());
+                peerConnections.clear();
+            }
+            if (signalingServer) signalingServer.close();
+            authContainer.classList.remove('hidden');
+            appContainer.classList.add('hidden');
+            resetVideoElements();
+            userId = null;
+            token = null;
+            currentServerId = null;
+            servers = [];
+            remoteUsers.clear();
+            serversDiv.innerHTML = '';
+            participantsList.innerHTML = '';
+            chatMessages.innerHTML = '';
+            leaveRoomButton.classList.add('hidden');
+            selectedServerElement = null;
+            isAdmin = false;
+            adminKeyInput.value = '';
+            adminKeyInput.classList.remove('hidden');
+            adminAuthButton.classList.remove('hidden');
+            adminAuthError.classList.add('hidden');
+            muteButton.classList.add('disabled');
+            muteButton.disabled = true;
+            videoButton.classList.add('disabled');
+            videoButton.disabled = true;
+            screenShareButton.classList.add('disabled');
+            screenShareButton.disabled = true;
+            startButton.classList.add('disabled');
+            startButton.disabled = true;
+            hangupButton.classList.add('disabled');
+            hangupButton.disabled = true;
+        });
+
+        createServerButton.addEventListener('click', () => {
+            const serverName = serverNameInput.value.trim();
+            const maxUsers = parseInt(maxUsersSlider.value) + 1;
+            if (serverName) {
+                const serverId = Date.now().toString();
+                if (signalingServer.readyState === WebSocket.OPEN) {
+                    signalingServer.send(JSON.stringify({
+                        type: 'createServer',
+                        id: serverId,
+                        name: serverName,
+                        userId,
+                        token,
+                        creator: userId,
+                        maxUsers: maxUsers
+                    }));
+                    serverNameInput.value = '';
+                    maxUsersSlider.value = 1;
+                    maxUsersValue.textContent = '1';
+                    createServerButton.classList.add('animate-pulse');
+                    setTimeout(() => createServerButton.classList.remove('animate-pulse'), 300);
+                } else {
+                    alert('Server not connected. Please wait and try again.');
+                }
+            } else {
+                alert('Please enter a server name.');
+            }
+        });
+
+        async function listMediaDevices() {
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                console.log('Available devices:', devices);
+                return devices;
+            } catch (error) {
+                console.error('Error listing devices:', error);
+                return [];
+            }
+        }
+
+        async function requestMediaAccess(attempt = 1, maxAttempts = 3) {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: isVideoOn,
+                    audio: !isMuted
+                });
+                return stream;
+            } catch (error) {
+                console.error(`Attempt ${attempt} failed to access media:`, error);
+                if (attempt < maxAttempts) {
+                    console.log(`Retrying... (${attempt + 1}/${maxAttempts})`);
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    return requestMediaAccess(attempt + 1, maxAttempts);
+                }
+                throw error;
+            }
+        }
+
+        async function joinServer(serverId, serverElement, maxUsers) {
+            if (currentServerId === serverId) return;
+            
+            if (currentServerId) {
+                leaveRoom();
+            }
+
+            currentServerId = serverId;
+            if (selectedServerElement) {
+                selectedServerElement.classList.remove('selected');
+            }
+            serverElement.classList.add('selected');
+            selectedServerElement = serverElement;
+            leaveRoomButton.classList.remove('hidden');
+            startButton.classList.remove('disabled');
+            startButton.disabled = false;
+            hangupButton.classList.remove('disabled');
+            hangupButton.disabled = false;
+
+            try {
+                const server = servers.find(s => s.id === serverId);
+                if (server && server.users.length >= server.maxUsers) {
+                    throw new Error('Server is full');
+                }
+
+                const devices = await listMediaDevices();
+                const hasVideo = devices.some(device => device.kind === 'videoinput');
+                const hasAudio = devices.some(device => device.kind === 'audioinput');
+                
+                if (!hasVideo || !hasAudio) {
+                    throw new Error(!hasVideo && !hasAudio ? 'No camera or microphone found' : !hasVideo ? 'No camera found' : 'No microphone found');
+                }
+
+                localStream = await requestMediaAccess();
+                if (localVideo) localVideo.srcObject = localStream;
+                muteButton.disabled = false;
+                videoButton.disabled = false;
+                screenShareButton.classList.remove('disabled');
+                screenShareButton.disabled = false;
+                isMuted = false;
+                isVideoOn = true;
+                muteLine.classList.add('hidden');
+                videoLine.classList.add('hidden');
+                localVideoPlaceholder.classList.add('hidden');
+                setupSoundMeter();
+                console.log('Buttons enabled: muteButton.disabled=', muteButton.disabled, 'videoButton.disabled=', videoButton.disabled);
+
+                muteButton.removeEventListener('click', handleMuteClick);
+                videoButton.removeEventListener('click', handleVideoClick);
+                muteButton.addEventListener('click', handleMuteClick);
+                videoButton.addEventListener('click', handleVideoClick);
+
+                buttonContainer.addEventListener('click', (event) => {
+                    console.log('Button container clicked, target:', event.target);
+                });
+
+                if (signalingServer.readyState === WebSocket.OPEN) {
+                    signalingServer.send(JSON.stringify({
+                        type: 'join',
+                        serverId,
+                        userId,
+                        token
+                    }));
+                    signalingServer.send(JSON.stringify({
+                        type: 'getParticipants',
+                        serverId,
+                        userId,
+                        token
+                    }));
+                }
+            } catch (error) {
+                console.error('Error accessing media:', error);
+                let message = 'Failed to join server. ';
+                if (error.message === 'Server is full') {
+                    message += 'This server has reached its maximum capacity.';
+                } else if (error.name === 'NotAllowedError') {
+                    message += 'Permissions denied. Please allow camera and microphone access in your browser settings and refresh the page.';
+                } else if (error.name === 'NotFoundError' || error.message.includes('No camera') || error.message.includes('No microphone')) {
+                    message += 'No camera or microphone found. Please ensure your devices are connected and not in use by another application.';
+                } else if (error.name === 'NotReadableError') {
+                    message += 'Camera or microphone is in use by another application. Please close other apps using these devices and try again.';
+                } else {
+                    message += `Error: ${error.message}. Please try refreshing the page or using a different browser.`;
+                }
+                alert(message);
+                leaveRoom();
+            }
+        }
+
+        function createPeerConnection(targetUserId) {
+            const pc = new RTCPeerConnection(configuration);
+            peerConnections.set(targetUserId, pc);
+
+            if (localStream) {
+                localStream.getTracks().forEach(track => {
+                    pc.addTrack(track, localStream);
+                    console.log(`Added track to peer connection for ${targetUserId}: kind=${track.kind}, id=${track.id}`);
+                });
+            }
+            if (screenStream) {
+                screenStream.getTracks().forEach(track => {
+                    pc.addTrack(track, screenStream);
+                    console.log(`Added screen share track to peer connection for ${targetUserId}: kind=${track.kind}, id=${track.id}`);
+                });
+            }
+
+            pc.ontrack = event => {
+                const stream = event.streams[0];
+                const user = remoteUsers.get(targetUserId);
+                if (user) {
+                    console.log(`Received track for ${targetUserId}: kind=${event.track.kind}, stream id=${stream.id}`);
+                    if (event.track.kind === 'video') {
+                        if (isScreenSharing && stream.id !== localStream?.id) {
+                            user.screenShare = stream;
+                            const screenShareContainer = document.getElementById(`screenShare-${targetUserId}`)?.parentElement;
+                            if (screenShareContainer) {
+                                screenShareContainer.classList.remove('hidden');
+                            }
+                        } else {
+                            user.video = stream;
+                        }
+                    } else if (event.track.kind === 'audio') {
+                        user.audio = stream;
+                    }
+                    updateRemoteVideos();
+                }
+            };
+
+            pc.onicecandidate = event => {
+                if (event.candidate && signalingServer.readyState === WebSocket.OPEN) {
+                    signalingServer.send(JSON.stringify({
+                        type: 'candidate',
+                        candidate: event.candidate,
+                        serverId: currentServerId,
+                        userId,
+                        target: targetUserId,
+                        token
+                    }));
+                }
+            };
+
+            pc.createOffer().then(offer => {
+                return pc.setLocalDescription(offer);
+            }).then(() => {
+                if (signalingServer.readyState === WebSocket.OPEN) {
+                    signalingServer.send(JSON.stringify({
+                        type: 'offer',
+                        offer: pc.localDescription,
+                        serverId: currentServerId,
+                        userId,
+                        target: targetUserId,
+                        token
+                    }));
+                }
+            }).catch(error => {
+                console.error('Error creating offer:', error);
+            });
+
+            pc.oniceconnectionstatechange = () => {
+                if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
+                    peerConnections.delete(targetUserId);
+                    remoteUsers.delete(targetUserId);
+                    updateRemoteVideos();
+                }
+            };
+        }
+
+        function leaveRoom() {
+            if (signalingServer.readyState === WebSocket.OPEN && currentServerId) {
+                signalingServer.send(JSON.stringify({
+                    type: 'leave',
+                    serverId: currentServerId,
+                    userId,
+                    token
+                }));
+            }
+
+            if (peerConnections.size > 0) {
+                peerConnections.forEach(pc => pc.close());
+                peerConnections.clear();
+            }
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+            }
+            if (screenStream) {
+                screenStream.getTracks().forEach(track => track.stop());
+                screenStream = null;
+            }
+            stopSoundMeter();
+            resetVideoElements();
+            startButton.classList.add('disabled');
+            startButton.disabled = true;
+            hangupButton.classList.add('disabled');
+            hangupButton.disabled = true;
+            muteButton.classList.remove('disabled');
+            muteButton.disabled = false;
+            videoButton.classList.remove('disabled');
+            videoButton.disabled = false;
+            screenShareButton.classList.add('disabled');
+            screenShareButton.disabled = true;
+            currentServerId = null;
+            isScreenSharing = false;
+            isMuted = false;
+            isVideoOn = true;
+            muteLine.classList.add('hidden');
+            videoLine.classList.add('hidden');
+            remoteUsers.clear();
+            participantsList.innerHTML = '';
+            if (selectedServerElement) {
+                selectedServerElement.classList.remove('selected');
+                selectedServerElement = null;
+            }
+            leaveRoomButton.classList.add('hidden');
+            chatMessages.innerHTML = '';
+        }
+
+        leaveRoomButton.addEventListener('click', () => {
+            leaveRoom();
+        });
+
+        startButton.addEventListener('click', async () => {
+            if (!currentServerId) {
+                alert('Please select a server to join.');
+                return;
+            }
+            try {
+                startButton.classList.add('disabled');
+                startButton.disabled = true;
+                hangupButton.classList.remove('disabled');
+                hangupButton.disabled = false;
+                startButton.classList.add('animate-pulse');
+                setTimeout(() => startButton.classList.remove('animate-pulse'), 300);
+            } catch (error) {
+                console.error('Error starting channel:', error);
+                alert('Failed to start channel.');
+                leaveRoom();
+            }
+        });
+
+        hangupButton.addEventListener('click', () => {
+            if (!currentServerId) {
+                alert('No server to leave.');
+                return;
+            }
+            leaveRoom();
+            startButton.classList.remove('disabled');
+            startButton.disabled = false;
+            hangupButton.classList.add('disabled');
+            hangupButton.disabled = true;
+            hangupButton.classList.add('animate-pulse');
+            setTimeout(() => hangupButton.classList.remove('animate-pulse'), 300);
+        });
+
+        function handleMuteClick(event) {
+            console.log('Mute button click event detected');
+            console.log('Mute button clicked');
+            try {
+                isMuted = !isMuted;
+                if (localStream) {
+                    const audioTracks = localStream.getAudioTracks();
+                    audioTracks.forEach(track => {
+                        track.enabled = !isMuted;
+                        console.log(`Audio track ${track.id} enabled: ${track.enabled}`);
+                    });
+                }
+                if (isMuted) {
+                    stopSoundMeter();
+                    muteLine.classList.remove('hidden');
+                } else {
+                    setupSoundMeter();
+                    muteLine.classList.add('hidden');
+                }
+                if (signalingServer.readyState === WebSocket.OPEN && currentServerId) {
+                    signalingServer.send(JSON.stringify({
+                        type: 'mute',
+                        isMuted,
+                        serverId: currentServerId,
+                        userId,
+                        token
+                    }));
+                }
+                muteButton.classList.add('animate-pulse');
+                setTimeout(() => muteButton.classList.remove('animate-pulse'), 300);
+            } catch (error) {
+                console.error('Error toggling mute:', error);
+                alert('Failed to toggle mute: ' + error.message);
+            }
+        }
+
+        function handleVideoClick(event) {
+            console.log('Video button click event detected');
+            console.log('Video button clicked');
+            try {
+                isVideoOn = !isVideoOn;
+                if (localStream) {
+                    const videoTracks = localStream.getVideoTracks();
+                    videoTracks.forEach(track => {
+                        track.enabled = isVideoOn;
+                        console.log(`Video track ${track.id} enabled: ${track.enabled}`);
+                    });
+                }
+                videoLine.classList.toggle('hidden', isVideoOn);
+                localVideoPlaceholder.classList.toggle('hidden', isVideoOn);
+                if (signalingServer.readyState === WebSocket.OPEN && currentServerId) {
+                    signalingServer.send(JSON.stringify({
+                        type: 'video',
+                        isVideoOn,
+                        serverId: currentServerId,
+                        userId,
+                        token
+                    }));
+                }
+                videoButton.classList.add('animate-pulse');
+                setTimeout(() => videoButton.classList.remove('animate-pulse'), 300);
+            } catch (error) {
+                console.error('Error toggling video:', error);
+                alert('Failed to toggle video: ' + error.message);
+            }
+        }
+
+        screenShareButton.addEventListener('click', async () => {
+            try {
+                if (!isScreenSharing) {
+                    screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+                    localScreenShareVideo.srcObject = screenStream;
+                    localScreenShareVideo.classList.remove('hidden');
+                    const screenTrack = screenStream.getVideoTracks()[0];
+                    peerConnections.forEach(pc => {
+                        pc.addTrack(screenTrack, screenStream);
+                    });
+                    isScreenSharing = true;
+                    screenShareButton.textContent = 'Stop Sharing';
+                    screenTrack.onended = () => {
+                        stopScreenSharing();
+                    };
+                } else {
+                    stopScreenSharing();
+                }
+                screenShareButton.classList.add('animate-pulse');
+                setTimeout(() => screenShareButton.classList.remove('animate-pulse'), 300);
+            } catch (error) {
+                console.error('Error sharing screen:', error);
+                alert('Failed to share screen: ' + error.message);
+            }
+        });
+
+        async function stopScreenSharing() {
+            if (isScreenSharing) {
+                screenStream.getTracks().forEach(track => track.stop());
+                screenStream = null;
+                isScreenSharing = false;
+                screenShareButton.textContent = 'Share Screen';
+                localScreenShareVideo.srcObject = null;
+                localScreenShareVideo.classList.add('hidden');
+                peerConnections.forEach(pc => {
+                    pc.getSenders().forEach(sender => {
+                        if (sender.track?.kind === 'video' && !localStream.getVideoTracks().includes(sender.track)) {
+                            pc.removeTrack(sender);
+                        }
+                    });
+                });
+                remoteUsers.forEach(user => {
+                    user.screenShare = null;
+                    const screenShareContainer = document.getElementById(`screenShare-${userId}`)?.parentElement;
+                    if (screenShareContainer) {
+                        screenShareContainer.classList.add('hidden');
+                    }
+                });
+                updateRemoteVideos();
+            }
+        }
+
+        sendChatButton.addEventListener('click', () => {
+            const text = chatInput.value.trim();
+            if (text && currentServerId && signalingServer.readyState === WebSocket.OPEN) {
+                signalingServer.send(JSON.stringify({
+                    type: 'chat',
+                    text,
+                    serverId: currentServerId,
+                    userId,
+                    token
+                }));
+                appendChatMessage(userId, text);
+                chatInput.value = '';
+                sendChatButton.classList.add('animate-pulse');
+                setTimeout(() => sendChatButton.classList.remove('animate-pulse'), 300);
+            } else if (!currentServerId) {
+                alert('Please join a server to send messages.');
+            } else if (signalingServer.readyState !== WebSocket.OPEN) {
+                alert('Server not connected. Please try again.');
+            }
+        });
+
+        function appendChatMessage(userId, text) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'p-1 text-gray-800 animate-slide-in';
+            messageDiv.textContent = `${userId}: ${text}`;
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+    </script>
+</body>
+</html>
