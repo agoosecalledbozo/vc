@@ -375,7 +375,7 @@
                 authError.classList.remove('hidden');
                 return;
             }
-            signalingServer = new WebSocket('wss://brick-occipital-onion.glitch.me');
+            signalingServer = new WebSocket('wss://your-service-name.onrender.com'); // Replace with your Render service URL
             signalingServer.onmessage = handleSignalingMessage;
             signalingServer.onopen = () => {
                 console.log('WebSocket connected');
@@ -748,7 +748,7 @@
                 if (data.error) {
                     authError.textContent = data.error;
                     authError.classList.remove('hidden');
-                    return; // Stop here if authentication fails
+                    return;
                 }
                 userId = username;
                 token = data.token;
