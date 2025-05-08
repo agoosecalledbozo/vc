@@ -1,8 +1,8 @@
-const WebSocket = require('ws');
+const { Client } = require('pg');
 const express = require('express');
+const WebSocket = require('ws');
 const http = require('http');
 const path = require('path');
-const sqlite3 = require('sqlite3').verbose();
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const sanitizeHtml = require('sanitize-html');
@@ -15,13 +15,30 @@ const wss = new WebSocket.Server({ server });
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-const db = new sqlite3.Database('.data/users.db', (err) => {
-    if (err) console.error('Database error:', err);
-    db.run('CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT)');
+// Connect to PostgreSQL using the DATABASE_URL environment variable
+const db = new Client({
+    connectionString: process.env.DATABASE_URL,
+    ssl: {
+        rejectUnauthorized: false // Required for Render's PostgreSQL
+    }
 });
 
-const jwtSecret = process.env.JWT_SECRET;
-const adminKey = process.env.ADMIN_KEY;
+db.connect()
+    .then(() => {
+        console.log('Connected to PostgreSQL database');
+        // Create users table if it doesn't exist
+        return db.query(`
+            CREATE TABLE IF NOT EXISTS users (
+                username TEXT PRIMARY KEY,
+                password TEXT NOT NULL
+            )
+        `);
+    })
+    .then(() => console.log('Users table created or already exists'))
+    .catch(err => console.error('Database error:', err));
+
+const jwtSecret = process.env.JWT_SECRET || 'your-secret-key-here';
+const adminKey = process.env.ADMIN_KEY || 'your-admin-key-here';
 const admins = new Set();
 
 const loginLimiter = rateLimit({
@@ -48,36 +65,39 @@ app.post('/register', loginLimiter, async (req, res) => {
     }
     try {
         const hashedPassword = await bcrypt.hash(password, 10);
-        db.run('INSERT INTO users (username, password) VALUES (?, ?)', [sanitizedUsername, hashedPassword], (err) => {
-            if (err) {
-                return res.json({ error: 'Username already exists' });
-            }
-            const token = jwt.sign({ username: sanitizedUsername }, jwtSecret, { expiresIn: '1h' });
-            res.json({ token });
-        });
+        await db.query('INSERT INTO users (username, password) VALUES ($1, $2)', [sanitizedUsername, hashedPassword]);
+        const token = jwt.sign({ username: sanitizedUsername }, jwtSecret, { expiresIn: '1h' });
+        res.json({ token });
     } catch (error) {
         console.error('Registration error:', error);
+        if (error.code === '23505') { // Unique violation (username already exists)
+            return res.json({ error: 'Username already exists' });
+        }
         res.json({ error: 'Server error' });
     }
 });
 
-app.post('/login', loginLimiter, (req, res) => {
+app.post('/login', loginLimiter, async (req, res) => {
     const { username, password } = req.body;
     if (!username || !password) {
         return res.json({ error: 'Username and password required' });
     }
     const sanitizedUsername = sanitizeHtml(username);
-    db.get('SELECT password FROM users WHERE username = ?', [sanitizedUsername], async (err, row) => {
-        if (err || !row) {
+    try {
+        const result = await db.query('SELECT password FROM users WHERE username = $1', [sanitizedUsername]);
+        if (result.rows.length === 0) {
             return res.json({ error: 'Invalid username or password' });
         }
-        const match = await bcrypt.compare(password, row.password);
+        const match = await bcrypt.compare(password, result.rows[0].password);
         if (!match) {
             return res.json({ error: 'Invalid username or password' });
         }
         const token = jwt.sign({ username: sanitizedUsername }, jwtSecret, { expiresIn: '1h' });
         res.json({ token });
-    });
+    } catch (error) {
+        console.error('Login error:', error);
+        res.json({ error: 'Server error' });
+    }
 });
 
 let servers = [];
